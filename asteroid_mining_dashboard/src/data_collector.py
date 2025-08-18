@@ -552,6 +552,42 @@ class AsteroidDataProcessor:
         logger.info(f"Found {len(mining_candidates)} mining candidates")
         
         return mining_candidates
+    
+    def get_approach_info(self, sstr: str) -> Tuple[Optional[float], Optional[str]]:
+        """
+        Return current distance (km) and next close approach date (IST) for given asteroid search string.
+        """
+        from datetime import datetime
+        try:
+            sbdb = self.collector.fetch_sbdb_asteroid_data(sstr)
+            cad = sbdb.get('close_approach_data', []) if sbdb else []
+            now_utc = datetime.utcnow()
+            current_dt = None
+            next_dt = None
+            current_dist = None
+            for rec in cad:
+                epoch_ms = rec.get('epoch_date_close_approach')
+                if epoch_ms is None:
+                    continue
+                dt = datetime.utcfromtimestamp(epoch_ms/1000)
+                dist_km = float(rec.get('miss_distance', {}).get('kilometers', 0))
+                if dt <= now_utc:
+                    if not current_dt or dt > current_dt:
+                        current_dt = dt
+                        current_dist = dist_km
+                else:
+                    if not next_dt or dt < next_dt:
+                        next_dt = dt
+            # convert next_dt to IST string
+            try:
+                from zoneinfo import ZoneInfo
+                ist = ZoneInfo('Asia/Kolkata')
+                next_str = next_dt.astimezone(ist).strftime('%Y-%m-%d %H:%M') + ' IST' if next_dt else None
+            except Exception:
+                next_str = next_dt.strftime('%Y-%m-%d %H:%M') + ' UTC' if next_dt else None
+            return current_dist, next_str
+        except Exception:
+            return None, None
 
 if __name__ == "__main__":
     # Test the data collection system

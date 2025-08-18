@@ -482,7 +482,27 @@ else:
             df_pred['Potential_Resources'] = df_pred['spectral_class'].map(RESOURCE_MAP).fillna('Unknown')
         else:
             df_pred['Potential_Resources'] = 'Unknown'
-        
+
+        # 🚀 Proximity & Resource Summary
+        st.markdown("### 🚀 Proximity & Resource Summary")
+        # Initialize data processor for approach info
+        processor = AsteroidDataProcessor(st.session_state.get('nasa_api_key', ''))
+        # Build summary table
+        summary_rows = []
+        for _, row in df_pred.iterrows():
+            identifier = row.get('designation') or row.get('name') or ''
+            dist, next_app = processor.get_approach_info(identifier)
+            dist_str = f"{dist:,.2f} km" if dist else 'Unknown'
+            next_str = next_app or 'Unknown'
+            summary_rows.append({
+                'Name': row.get('name', 'N/A'),
+                'Resources': row.get('Potential_Resources', 'Unknown'),
+                'Current Distance': dist_str,
+                'Next Approach': next_str
+            })
+        if summary_rows:
+            st.table(pd.DataFrame(summary_rows))
+
         # Sidebar filters for exploration
         st.sidebar.subheader("🔍 Exploration Filters")
         
