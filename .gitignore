@@ -201,6 +201,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Ignore generated data and serialized models
+*.csv
+*.pkl
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

@@ -87,6 +87,10 @@ class MultiAgencyDataCollector:
             'orbit': True
         }
         
+        # Skip numeric-only designations that cause SBDB 400 errors
+        if object_id.isdigit():
+            logger.debug(f"Skipping numeric-only SBDB request for {object_id}")
+            return None
         try:
             response = self.session.get(self.nasa_sbdb_url, params=params)
             response.raise_for_status()
@@ -455,7 +459,16 @@ class AsteroidDataProcessor:
                 asteroid_data['name'] = neo.get('name')
                 asteroid_data['designation'] = neo.get('designation')
                 asteroid_data['nasa_jpl_url'] = neo.get('nasa_jpl_url')
+                # Hazardous flag
                 asteroid_data['is_potentially_hazardous'] = neo.get('is_potentially_hazardous_asteroid')
+                # Raw physical parameters
+                asteroid_data['absolute_magnitude_h'] = neo.get('absolute_magnitude_h')
+                # Estimated diameter in km
+                ed = neo.get('estimated_diameter', {}).get('kilometers', {})
+                asteroid_data['estimated_diameter_min_km'] = ed.get('estimated_diameter_min')
+                asteroid_data['estimated_diameter_max_km'] = ed.get('estimated_diameter_max')
+                # Close approach data list for further analysis
+                asteroid_data['raw_close_approach_data'] = neo.get('close_approach_data', [])
                 
                 # Filter by timeframe via CAD if provided
                 if cad_filter_ids and neo.get('designation') not in cad_filter_ids:

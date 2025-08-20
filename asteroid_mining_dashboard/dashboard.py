@@ -176,8 +176,11 @@ if 'predictions' not in st.session_state:
 @st.cache_resource
 def load_enhanced_classifier():
     try:
+        # Load or train enhanced classifier models in project directory
         classifier = EnhancedAsteroidMiningClassifier()
-        model_loaded = classifier.load_models("/workspaces/codespaces-blank/asteroid_mining_dashboard/models/enhanced_mining")
+        import os
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "models", "enhanced_mining"))
+        model_loaded = classifier.load_models(base_dir)
         if model_loaded:
             return classifier
         else:
@@ -185,7 +188,7 @@ def load_enhanced_classifier():
             st.info("🔄 Training new models with hyperparameter tuning...")
             sample_data = generate_demo_data(1000)
             classifier.train_models(sample_data, use_hyperparameter_tuning=True)
-            classifier.save_models("/workspaces/codespaces-blank/asteroid_mining_dashboard/models/enhanced_mining")
+            classifier.save_models(base_dir)
             return classifier
     except Exception as e:
         st.error(f"Error with classifier: {e}")
@@ -291,7 +294,14 @@ if data_source == "Demo Data":
 
 elif data_source == "NASA Live Data":
     st.sidebar.text_input("NASA API Key", key="nasa_api_key", type="password", value="ieNKM2I1HjxFtKde7SNHEUmqlI5zj3A6MriHgbZC")
-    pages = st.sidebar.slider("Pages to fetch (20 NEOs per page)", 1, 5, 1)
+    # Let user choose total number of NEAs to fetch (by chunks of 20 per API page)
+    n_live = st.sidebar.slider(
+        "Number of Near-Earth Asteroids to retrieve", 20, 1000, 100, step=20
+    )
+    # Compute how many API pages needed (20 objects per page)
+    pages_needed = -(-n_live // 20)  # integer ceil
+    st.sidebar.caption("Rate limit: 1000 requests per hour")
+
     st.sidebar.markdown("Timeframe (optional)")
     col_a, col_b = st.sidebar.columns(2)
     with col_a:
@@ -306,8 +316,13 @@ elif data_source == "NASA Live Data":
                 try:
                     dmin = date_min.strftime('%Y-%m-%d') if date_min else None
                     dmax = date_max.strftime('%Y-%m-%d') if date_max else None
-                    df_live, rate = _cached_collect(st.session_state['nasa_api_key'], pages, dmin, dmax)
-                    st.session_state.asteroid_data = df_live.rename(columns={'diameter_km': 'diameter'})
+                    # Fetch enough pages then slice to desired count
+                    df_live, rate = _cached_collect(
+                        st.session_state['nasa_api_key'], pages_needed, dmin, dmax
+                    )
+                    if df_live is not None:
+                        df_live = df_live.head(n_live)
+                        st.session_state.asteroid_data = df_live.rename(columns={'diameter_km': 'diameter'})
                     
                     # Ensure diameter column exists (convert from diameter_km if needed)
                     if 'diameter' not in st.session_state.asteroid_data.columns:
@@ -494,9 +509,24 @@ else:
             dist, next_app = processor.get_approach_info(identifier)
             dist_str = f"{dist:,.2f} km" if dist else 'Unknown'
             next_str = next_app or 'Unknown'
+            # Include hazardous status
+            hazardous = 'Yes' if row.get('is_potentially_hazardous', False) else 'No'
+            # Absolute magnitude
+            abs_mag = row.get('absolute_magnitude_h')
+            abs_mag_str = f"{abs_mag:.2f}" if abs_mag is not None else 'Unknown'
+            # Estimated diameter range
+            ed_min = row.get('estimated_diameter_min_km')
+            ed_max = row.get('estimated_diameter_max_km')
+            if ed_min is not None and ed_max is not None:
+                diam_str = f"{ed_min:.3f}–{ed_max:.3f}"
+            else:
+                diam_str = 'Unknown'
             summary_rows.append({
                 'Name': row.get('name', 'N/A'),
                 'Resources': row.get('Potential_Resources', 'Unknown'),
+                'Hazardous': hazardous,
+                'Abs. Mag': abs_mag_str,
+                'Diameter Range (km)': diam_str,
                 'Current Distance': dist_str,
                 'Next Approach': next_str
             })
@@ -579,7 +609,6 @@ else:
                 combined_mask = pd.Series([True] * len(filtered_df), index=filtered_df.index)
             
             filtered_df = filtered_df[combined_mask]
-        
         if search_name:
             name_col = 'name' if 'name' in filtered_df.columns else 'full_name'
             if name_col in filtered_df.columns:
